@@ -106,7 +106,7 @@ function PanShader(){
 		    "            if (index == 63) limit = 0.34375;",
 		    "        }",
 
-		    "        return brightness < limit ? 0.7 : 1.0;",
+		    "        return brightness < limit ? 0.6 : 1.0;",
 		    "    }",
 
 		    "    vec3 dither8x8(vec2 position, vec3 color) {",
@@ -141,8 +141,8 @@ function PanShader(){
 			"   vec4 color = texture2D(texture, uv);",
             "   color = dither8x8(gl_FragCoord.xy, color);",
             "	color.rgb = rgb2hsv(color.rgb);",
-            "	color.r *= 1.1;",
-            "	color.g *= 1.3;",
+            "	color.r *= 1.01;",
+            "	color.g *= 1.7;",
             "	color.rgb = hsv2rgb(color.rgb);",
             "	gl_FragColor = color;",
 			"}"
