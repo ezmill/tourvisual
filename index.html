@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en" style="visibility: visible;"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+		
+		<title>dessert</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<style>
+			body {
+				font-family: Monospace;
+				background-color: #000000;
+				margin: 0px;
+				overflow: hidden;
+				/*cursor: none;*/
+			}
+			canvas{
+				width: 1440px;
+				height: 742px;
+			}
+		</style>
+	<style type="text/css"></style></head>
+	<body cz-shortcut-listen="true">
+		<script type="x-shader/x-vertex" id="vertexShader">
+
+			attribute vec4 tangent;
+
+			uniform float time;
+			uniform vec2 repeat;
+			uniform float useNormal;
+			uniform float useRim;
+
+			varying vec2 vUv;
+			varying vec3 vTangent;
+			varying vec3 vBinormal;
+			varying vec3 vNormal;
+			varying vec3 vEye;
+			varying vec3 vU;
+			varying vec2 vN;
+
+			void main() {
+
+				vU = normalize( vec3( modelViewMatrix * vec4( position, 1.0 ) ) );
+
+				if( useNormal == 0. ) {
+					vec3 n = normalize( normalMatrix * normal );
+					vec3 r = reflect( vU, n );
+					float m = 2.0 * sqrt( r.x * r.x + r.y * r.y + ( r.z + 1.0 ) * ( r.z+1.0 ) );
+					vN = vec2( r.x / m + 0.5,  r.y / m + 0.5 );
+				} else {
+					vN = vec2( 0. );
+				}
+
+				vUv = repeat * uv;
+				gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+
+				vNormal = normalize( normalMatrix * normal );
+				if( useNormal == 1. ) {
+					vTangent = normalize( normalMatrix * tangent.xyz );
+					vBinormal = normalize( cross( vNormal, vTangent ) * tangent.w );
+				} else {
+					vTangent = vec3( 0. );
+					vBinormal = vec3( 0. );
+				}
+
+				if( useRim > 0. ) {
+					vEye = ( modelViewMatrix * vec4( position, 1.0 ) ).xyz;
+				} else {
+					vEye = vec3( 0. );
+				}
+
+			}
+
+			</script>
+			
+			<script type="x-shader/x-vertex" id="fragmentShader">
+			
+			uniform float time;
+			uniform float bump;
+			uniform sampler2D tNormal;
+			uniform sampler2D tMatCap;
+			uniform float noise;
+			uniform float useNormal;
+			uniform float useRim;
+			uniform float rimPower;
+			uniform float useScreen;
+			uniform float normalScale;
+			uniform float normalRepeat;
+			uniform float opacity;
+
+			varying vec2 vUv;
+			varying vec3 vTangent;
+			varying vec3 vBinormal;
+			varying vec3 vNormal;
+			varying vec3 vEye;
+			varying vec3 vU;
+			varying vec2 vN;
+
+			float random(vec3 scale,float seed){return fract(sin(dot(gl_FragCoord.xyz+seed,scale))*43758.5453+seed);}
+
+			void main() {
+				
+				vec3 finalNormal = vNormal;
+				vec2 calculatedNormal = vN;
+
+				if( useNormal == 1. ) {
+					vec3 normalTex = texture2D( tNormal, vUv * normalRepeat ).xyz * 2.0 - 1.0;
+					normalTex.xy *= normalScale;
+					normalTex.y *= -1.;
+					normalTex = normalize( normalTex );
+					mat3 tsb = mat3( normalize( vTangent ), normalize( vBinormal ), normalize( vNormal ) );
+					finalNormal = tsb * normalTex;
+
+					vec3 r = reflect( vU, normalize( finalNormal ) );
+					float m = 2.0 * sqrt( r.x * r.x + r.y * r.y + ( r.z + 1.0 ) * ( r.z+1.0 ) );
+					calculatedNormal = vec2( r.x / m + 0.5,  r.y / m + 0.5 );
+				}
+
+				vec3 base = texture2D( tMatCap, calculatedNormal ).rgb;
+				// base.b = 0.5+0.5*sin(time*2.0);
+
+				// rim lighting
+
+				if( useRim > 0. ) {
+					float f = rimPower * abs( dot( vNormal, normalize( vEye ) ) );
+					f = useRim * ( 1. - smoothstep( 0.0, 1., f ) );
+			        base += vec3( f );
+			    }
+
+			    // screen blending
+
+		        if( useScreen == 1. ) {
+					base = vec3( 1. ) - ( vec3( 1. ) - base ) * ( vec3( 1. ) - base );
+				}
+
+		        // noise 
+
+		        base += noise * ( .5 - random( vec3( 1. ), length( gl_FragCoord ) ) );
+
+				gl_FragColor = vec4( base, opacity );
+
+			}
+			
+			</script>
+		<script src="js/three.min.js"></script>
+		<script src="js/ThreeJsUtils.js"></script>
+
+		<script src="js/OrbitControls.js"></script>
+		<script src="js/FeedbackMaterial.js"></script>
+		<script src="js/PanShader.js"></script>
+		<script src="js/CustomShaders.js"></script>
+		<script src="js/CCapture.min.js"></script>
+		<script src="js/gif.js"></script>
+		<script src="js/gif.worker.js"></script>
+		<script src="js/Whammy.js"></script>
+		<script>
+
+			var container;
+
+			var scene, camera, light, renderer;
+			var geometry, cube, mesh, material;
+			var mouse = new THREE.Vector2(), center;
+			var stats;
+			var container;
+			var scene, renderer, camera, controls;
+			var fbScene, fbRenderer, fbCamera, fbTexture, fbShaders, fbMaterial;
+			var mouseX = 0, mouseY = 0;
+			var time = 0;
+			var texture;
+			var windowHalfX = window.innerWidth / 2;
+			var w = window.innerWidth;
+			var windowHalfY = window.innerHeight / 2;
+			var h = window.innerHeight;
+
+			var start = Date.now(); 
+			var gradient, tex;
+			var meshes = [];
+			var obj;
+			var counter = 0;
+			var rtt;
+			var captureFrame = 0;
+			var sizeMult = 1;
+			var capturer = new CCapture( { format: 'webm', workersPath: 'js/' } );
+			var range = 100.0;
+			var video, texture;
+			var expand = false;
+			var target;
+			var _scene, _camera, _renderer;
+			init();
+			animate();
+			function init(){
+				scene = new THREE.Scene();
+				camera = new THREE.OrthographicCamera(window.innerWidth / - 2, window.innerWidth / 2, window.innerHeight / 2, window.innerHeight / - 2, 1, 1000)
+				camera.position.z = 10;
+				renderer = new THREE.WebGLRenderer({preserveDrawingBuffer: true});
+				renderer.setSize(window.innerWidth, window.innerHeight);
+				renderer.setClearColor(0xffffff, 1.0);
+				shader = new PanShader();
+
+				texture = THREE.ImageUtils.loadTexture("textures/pan.jpg");
+				texture.magFilter = texture.minFilter = THREE.NearestFilter;
+				material = new THREE.ShaderMaterial({
+					uniforms: shader.uniforms,
+					vertexShader: shader.vertexShader,
+					fragmentShader: shader.fragmentShader,
+					transparent: true,
+					side: 2
+				})
+				material.uniforms.time.value = time;
+				material.uniforms.texture.value = texture;
+				material.uniforms.resolution.value = new THREE.Vector2(window.innerWidth, window.innerHeight);
+				geometry = new THREE.PlaneBufferGeometry(window.innerWidth, window.innerHeight, 10, 10);
+				mesh = new THREE.Mesh(geometry, material);
+				scene.add(mesh);
+
+				container = document.createElement( 'div' );
+				document.body.appendChild( container );
+				container.appendChild(renderer.domElement);
+
+				document.addEventListener( 'mousemove', onDocumentMouseMove, false );
+				document.addEventListener( 'mousedown', onDocumentMouseDown, false );
+
+			}
+			var counter = 0;
+			function onDocumentMouseDown(){
+				// if(counter%2==0){
+				// 	mesh.visible = false;
+				// 	expand = true;
+				// } else {
+				// 	mesh.visible = true;
+				// 	expand = false;
+				// }
+				// counter++;
+				// _mesh.visible = false;
+			}
+
+
+			function animate() {
+					requestAnimationFrame( animate );
+					render();
+
+			}
+			function render() {
+			    time+=0.0001;
+				// texture.needsUpdate = true;			
+				mesh.material.uniforms.time.value = time;
+				renderer.render(scene, camera);
+			    capturer.capture( render.domElement );
+			}
+
+		function onDocumentMouseMove( event ) {
+
+				mouse.x = ( event.clientX - window.innerWidth / 2 ) * 8;
+				mouse.y = ( event.clientY - window.innerHeight / 2 ) * 8;
+
+			    unMappedMouseX = (event.clientX );
+			    unMappedMouseY = (event.clientY );
+			    mouseX = map(unMappedMouseX, window.innerWidth, -1.0,1.0);
+			    mouseY = map(unMappedMouseY, window.innerHeight, -1.0,1.0);    
+
+			}
+
+			function hslaColor(h,s,l,a)
+			  {
+			    return 'hsla(' + h + ',' + s + '%,' + l + '%,' + a + ')';
+			  }
+
+		</script>
+		<!-- <div><canvas width="1440" height="742"></canvas></div> -->
+	
+
+</body></html>
